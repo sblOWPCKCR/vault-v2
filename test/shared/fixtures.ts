@@ -306,11 +306,16 @@ export class YieldEnvironment {
 
     // ==== Protocol ====
 
+    // cauldron is debt+collateral accounting module
     const cauldron = (await deployContract(owner, CauldronArtifact, [])) as Cauldron
     const innerLadle = (await deployContract(owner, LadleArtifact, [cauldron.address, weth.address])) as Ladle
+    // ladle is main contract for routing + account management
     const ladle = new LadleWrapper(innerLadle)
+    // witch is the liquidation engine
     const witch = (await deployContract(owner, WitchArtifact, [cauldron.address, ladle.address])) as Witch
+    // join holds external collateral/underlying ERC20s
     const joinFactory = (await deployContract(owner, JoinFactoryArtifact, [])) as JoinFactory
+    // pool is for trading in yieldspace
     const poolFactory = (await deployContract(owner, PoolFactoryMockArtifact, [])) as PoolFactoryMock
 
     const fyTokenFactoryFactory = await ethers.getContractFactory('FYTokenFactory', {
@@ -330,10 +335,16 @@ export class YieldEnvironment {
       fyTokenFactory.address,
     ])) as Wand
 
+    // chi + rate oracles are used to charge interest to borrowers for maintaining a position after maturity
+    // rate oracle is for determining the interest (TODO: understand this.. not sure what it means)
+    // chi oracle is for determining the increasing redemption value of fyTokens after maturity
+    // see https://docs.yieldprotocol.com/#/users/lending?id=maturity
     const chiRateOracle = (await deployContract(owner, CompoundMultiOracleArtifact, [])) as CompoundMultiOracle
-    const spotOracle = (await deployContract(owner, ChainlinkMultiOracleArtifact, [])) as ChainlinkMultiOracle
     oracles.set(RATE, (chiRateOracle as unknown) as OracleMock)
     oracles.set(CHI, (chiRateOracle as unknown) as OracleMock)
+    // spot oracles return the `value` of an `amount` of `base` in `quote` terms. 
+    // The cauldron uses them to determine the collateralization level of vaults.
+    const spotOracle = (await deployContract(owner, ChainlinkMultiOracleArtifact, [])) as ChainlinkMultiOracle
 
     // ==== Orchestration ====
     await this.cauldronLadleAuth(cauldron, ladle.address)
